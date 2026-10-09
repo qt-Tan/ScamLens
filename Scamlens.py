@@ -394,7 +394,7 @@ def build_manipulation_chain(findings):
     name_map["sender"] = "👤 Suspicious Sender"   #新增
     return [name_map.get(k, k) for k in chain]
 
-EXTRA_PER_MATCH = {"High": 8, "Medium": 4}   # bonus for each additional keyword in the same tactic
+EXTRA_PER_MATCH = {"High": 25, "Medium": 12}   # bonus for each additional keyword in the same tactic
 MAX_EXTRA_MATCHES = 2                        # at most 2 bonus keywords per tactic
 
 def compute_risk(findings):
