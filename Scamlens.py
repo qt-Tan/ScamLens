@@ -353,7 +353,7 @@ def detect_urls(message):
         title, severity = URL_FLAG_INFO[flag]
         findings.append({
             "key": "url",
-            "type": title,
+            #"type": title,
             "evidence": d["hosts"][0],
             "all_matches": d["hosts"],
             "explanation": (d["reasons"][0][0].upper() + d["reasons"][0][1:] + "." if len(d["reasons"]) == 1

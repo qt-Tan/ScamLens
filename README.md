@@ -126,5 +126,5 @@ The project is currently a prototype. Possible next steps include:
 
 ## Disclaimer
 
-ScamLens is a hackathon prototype for identifying potential scam indicators and explaining suspicious messages. It does not guarantee that a message is malicious or safe.
+ScamLens is a hackathon prototype for identifying potential scam indicators and explaining suspicious messages. It does not guarantee that a message is malicious or not safe.
 
