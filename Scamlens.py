@@ -708,7 +708,7 @@ header[data-testid="stHeader"] {background: transparent;}
 .sample-note {font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; color: #94a3b8; margin-top: 10px; text-align: right;}
 
 /* ---------- section labels ---------- */
-.eyebrow {font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; color: #0369a1; margin: 4px 0 10px;}
+.eyebrow {font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; color: #000000; margin: 4px 0 10px;}
 .sec {font-family: 'Syne', sans-serif; font-size: 1.35rem; font-weight: 800; color: #0f172a; margin: 34px 0 14px;}
 
 /* ---------- input type = 3 selectable cards ---------- */
@@ -725,6 +725,7 @@ div[role="radiogroup"] > label:has(input:checked) {
     box-shadow: 0 8px 22px rgba(37,99,235,0.20);
 }
 div[role="radiogroup"] > label p {font-weight: 700; color: #0f172a !important; margin: 0; text-align: center; font-size: 1rem;}
+div[role="radiogroup"] label, div[role="radiogroup"] label * {color: #000000 !important;}
 
 /* ---------- analysis panel (the form) ---------- */
 [data-testid="stForm"] {background: #ffffff; border: 1px solid #dbe4f3; border-radius: 20px; padding: 26px; box-shadow: 0 16px 40px rgba(30,64,175,0.10);}
