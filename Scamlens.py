@@ -787,6 +787,60 @@ div[role="radiogroup"] label, div[role="radiogroup"] label * {color: #000000 !im
 [data-testid="stExpander"] {background: #ffffff; border: 1px solid #dbe4f3 !important; border-radius: 14px; margin-bottom: 8px;}
 [data-testid="stExpander"] summary p {color: #0f172a !important;}
 .stButton button {border-radius: 12px; font-weight: 700;}
+
+/* ---------- DARK MODE (only applies when the PC is in dark mode) ---------- */
+@media (prefers-color-scheme: dark) {
+    .stApp {
+        background:
+            radial-gradient(ellipse 700px 420px at 10% 0%, rgba(14,165,233,0.12), transparent 70%),
+            radial-gradient(ellipse 600px 400px at 92% 28%, rgba(124,58,237,0.12), transparent 70%),
+            radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+            #05070d;
+        background-size: auto, auto, 28px 28px, auto;
+        color: #cbd5e1;
+    }
+
+    /* headings and strong text */
+    .nav-name, .h1, .stats b, .sec, .res-verdict, .ftitle, .dsafe, .btn-ghost,
+    .eyebrow, div[role="radiogroup"] label, div[role="radiogroup"] label * {color: #f1f5f9 !important;}
+    .eyebrow {color: #38bdf8 !important;}
+    .res-conf b {color: #f1f5f9;}
+
+    /* body text */
+    .lead, .stats span, .dlist, .dsub, .dquote, .fev, .fexp, .panel-sub, .res-conf,
+    .info-card li, .rec li, .nav-links a {color: #cbd5e1 !important;}
+    .nav-links a:hover, .nav-links a.on {color: #ffffff !important; background: rgba(255,255,255,0.08);}
+    .nav {border-bottom-color: rgba(255,255,255,0.12);}
+    .sample-note, .mlabel {color: #94a3b8;}
+    [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] * {color: #94a3b8 !important;}
+    [data-testid="stCheckbox"] label p {color: #cbd5e1 !important;}
+
+    /* cards and panels */
+    .dcard, .result, .fcard, .info-card, [data-testid="stForm"], [data-testid="stExpander"],
+    .btn-ghost, div[role="radiogroup"] > label {
+        background: #0f172a; border-color: #1e293b;
+    }
+    .result {border-color: var(--c);}
+    .fcard {border-left-color: #64748b;}
+    div[role="radiogroup"] > label:has(input:checked) {
+        background: linear-gradient(135deg, #0c4a6e, #4c1d95); border-color: #38bdf8;
+    }
+    [data-testid="stExpander"] summary p {color: #f1f5f9 !important;}
+    .bar {background: rgba(255,255,255,0.10);}
+
+    /* inputs */
+    [data-testid="stForm"] textarea {background: #020617 !important; color: #e2e8f0 !important; border-color: #334155 !important;}
+    [data-testid="stForm"] textarea::placeholder {color: #64748b !important;}
+    [data-testid="stFileUploaderDropzone"] {background: #020617 !important; border-color: #475569 !important;}
+    .fev code {background: #1e293b; color: #f1f5f9;}
+
+    /* chips and recommendation box */
+    .chip {background: #2e1065; border-color: #6d28d9; color: #ddd6fe;}
+    .rec {background: linear-gradient(135deg, rgba(14,165,233,0.14), rgba(124,58,237,0.14)); border-color: rgba(56,189,248,0.35);}
+    .rec-title {color: #38bdf8;}
+    .panel-title {color: #38bdf8;}
+}
+
 </style>
 """, unsafe_allow_html=True)
 
