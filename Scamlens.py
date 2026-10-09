@@ -208,12 +208,34 @@ def has_unnegated_request(text):
               return True
     return False
 
+def distinct_matches(message_lower, examples):
+    """Keywords found in the message, without double-counting overlaps
+    (e.g. 'suspend' + 'suspended', or 'click' + 'click here')."""
+    hits = []
+    for p in examples:
+        for m in _rx(p).finditer(message_lower):
+            hits.append((m.start(), m.end(), p))
+    hits.sort(key=lambda h: h[1] - h[0], reverse=True)   # longest first
+    kept, used = [], []
+    for s, e, p in hits:
+        if any(s < ue and e > us for us, ue in used):
+            continue
+        used.append((s, e))
+        kept.append((s, p))
+    kept.sort()
+    out = []
+    for _, p in kept:
+        if p not in out:          # same keyword repeated counts once
+            out.append(p)
+    return out
+
 def detect_tactics(message):
     message_lower = message.lower()
     findings = []
 
     for key, tactic in TACTICS_KB.items():
-        matched = [p for p in tactic["examples"] if _rx(p).search(message_lower)]
+        #matched = [p for p in tactic["examples"] if _rx(p).search(message_lower)]
+        matched = distinct_matches(message_lower, tactic["examples"])
         if key == "urgency":
             for pat in URGENCY_PATTERNS:
                 m = re.search(pat, message_lower)
@@ -372,6 +394,8 @@ def build_manipulation_chain(findings):
     name_map["sender"] = "👤 Suspicious Sender"   #新增
     return [name_map.get(k, k) for k in chain]
 
+EXTRA_PER_MATCH = {"High": 8, "Medium": 4}   # bonus for each additional keyword in the same tactic
+MAX_EXTRA_MATCHES = 2                        # at most 2 bonus keywords per tactic
 
 def compute_risk(findings):
     score = 0
@@ -380,6 +404,9 @@ def compute_risk(findings):
             score += 25
         elif f["severity"] == "Medium":
             score += 12
+        if f["key"] in TACTICS_KB:           # only keyword-based tactics, not sender/url/llm_cue
+            extra = min(len(f["all_matches"]) - 1, MAX_EXTRA_MATCHES)
+            score += max(extra, 0) * EXTRA_PER_MATCH.get(f["severity"], 0)
     score = min(score, 100)
 
     if score >= 60:
@@ -393,6 +420,26 @@ def compute_risk(findings):
         icon = "🟢"
 
     return score, level, icon
+#ef compute_risk(findings):
+#    score = 0
+#   for f in findings:
+#       if f["severity"] == "High":
+#           score += 25
+#       elif f["severity"] == "Medium":
+#           score += 12
+#   score = min(score, 100)
+#
+#   if score >= 60:
+#       level = "HIGH RISK"
+#       icon = "🔴"
+#   elif score >= 30:
+#       level = "SUSPICIOUS"
+#       icon = "🟡"
+#   else:
+#       level = "LOW RISK"
+#       icon = "🟢"
+#
+#   return score, level, icon
 
 #compute_confidence now looks at the verdict (level / score / sender), so a clean message no longer shows "Confidence: Low"
 def compute_confidence(findings, level, score, sender_official=False):
