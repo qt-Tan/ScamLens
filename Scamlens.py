@@ -1,26 +1,22 @@
 import streamlit as st
 import re
-import json   # 新增: new import (AI reasoning)
-import os     # 新增: new import (API key)
-import difflib #新增：new import (used to spot misspelled brand domains)
-from datetime import datetime,timezone #新增timezone
-from email import policy #新增这一行
-from email.parser import BytesParser #新增这一行
-from email.utils import parseaddr #新增这一行
-from urllib.parse import urlparse #新增: new import #新增这一行
-# -----------------------------
-# Page configuration
-# -----------------------------
+import json
+import os
+import difflib
+from datetime import datetime,timezone
+from email import policy
+from email.parser import BytesParser
+from email.utils import parseaddr
+from urllib.parse import urlparse
+
+ #Page configuration
 st.set_page_config(
     page_title="ScamLens",
     page_icon="🛡️",
     layout="centered"
 )
 
-# =========================================================
 # 0. SENDER ANALYSIS HELPERS
-# =========================================================
-#新增这一段（到TACTICS_KB前面）
 OFFICIAL = {"maybank": ["maybank2u.com.my", "maybank.com", "maybank.com.my"],
             "cimb": ["cimb.com.my", "cimbclicks.com.my"],
             "lhdn": ["hasil.gov.my"],
@@ -41,14 +37,13 @@ def reg_domain(host):
     p = host.split(".")
     return ".".join(p[-3:]) if len(p) >= 3 and ".".join(p[-2:]) in {"com.my", "gov.my", "org.my", "net.my"} else ".".join(p[-2:])
 
-# ---- 从粘贴的文本里抓头信息 ----
 def extract_headers(text):
     def grab(name):
         m = re.search(rf"(?im)^{name}:[ \t]*(.+)$", text)
         return m.group(1).strip() if m else ""
     return grab("from"), grab("reply-to")
 
-# ---- 发件人检查：返回 (findings, 是否官方域名) ----
+# analyze sender: returns (findings, is_official_domain)
 def analyze_sender(from_header, reply_to=""):
     findings = []
     name, addr = parseaddr(from_header)
@@ -64,7 +59,7 @@ def analyze_sender(from_header, reply_to=""):
     if not official:
         reasons = [f"the display name claims to be '{b}', but the address uses {domain}" for b in claimed_brands(name)]
         reasons += [f"the domain {domain} uses the name '{b}' but is not an official domain" for b in claimed_brands(domain)]
-        if reasons:  # 合并成一条，避免重复加分
+        if reasons:  
             add("; ".join(reasons).capitalize() + ".", "High")
         if domain.rsplit(".", 1)[-1] in BAD_TLDS:
             add(f"The sender domain ends in .{domain.rsplit('.', 1)[-1]}, often abused in scams.", "Medium")
@@ -73,9 +68,7 @@ def analyze_sender(from_header, reply_to=""):
         add(f"Replies would go to {rt.rsplit('@', 1)[1]}, not to the sender's own domain.", "Medium")
     return findings, official
 
-# =========================================================
 # 1. KNOWLEDGE BASE
-# =========================================================
 TACTICS_KB = {
     "urgency": {
         "name": "🚨 Urgency",
@@ -142,11 +135,7 @@ GUIDANCE_KB = {
     ]
 }
 
-# =========================================================
 # 2. PII REDACTION
-# =========================================================
-
-#重新写了这个part
 def redact_pii(text):
     redactions = []
     redacted = text
@@ -194,11 +183,7 @@ def redact_pii(text):
     return redacted, redactions
 
 
-# =========================================================
 # 3. TOOLS
-# =========================================================
-
-#新增
 def _rx(term):
     # whole-word match (allows simple endings: s / es / ed / d / ing);
     # "_" counts as part of a word so tokens like [CODE_REDACTED] never match a keyword
@@ -248,7 +233,7 @@ def detect_tactics(message):
 
 
        
-# 新增: link analysis. This whole section replaces the old detect_urls().
+#link analysis. This whole section replaces the old detect_urls().
 SHORTENERS = {"bit.ly", "tinyurl.com", "t.co", "is.gd", "cutt.ly", "rb.gy", "shorturl.at",
               "s.id", "ow.ly", "goo.gl", "tiny.cc", "rebrand.ly"}
 URL_TLDS = sorted({"com", "net", "org", "my", "info", "biz", "ly", "cc", "ws"} | BAD_TLDS)
@@ -409,7 +394,7 @@ def compute_risk(findings):
 
     return score, level, icon
 
-# 新增: compute_confidence now looks at the verdict (level / score / sender), so a clean message no longer shows "Confidence: Low"
+#compute_confidence now looks at the verdict (level / score / sender), so a clean message no longer shows "Confidence: Low"
 def compute_confidence(findings, level, score, sender_official=False):
     high = sum(1 for f in findings if f["severity"] == "High")
     medium = sum(1 for f in findings if f["severity"] == "Medium")
@@ -467,13 +452,10 @@ def write_audit_log(step, data):
     st.session_state.setdefault("audit_log", [])
     st.session_state["audit_log"].append(entry)
 
-# =========================================================
-# 新增: optional AI reasoning (LLM). Off by default; the rule-based result always works without it.
+# optional AI reasoning (LLM). Off by default; the rule-based result always works without it.
 # The LLM only EXPLAINS the evidence and may add up to 2 labelled "AI-detected cues"; it never decides the verdict alone.
 # Only the PII-redacted text (with link query strings removed) and the sender domain are sent.
 # To use a different LLM provider, change call_llm() only.
-# =========================================================
-
 LLM_MODEL = os.environ.get("SCAMLENS_LLM_MODEL", "claude-haiku-4-5-20251001")
 MAX_LLM_CUES = 2
 
@@ -551,11 +533,8 @@ def llm_reasoning(redacted_message, findings, score, level, sender_domain, api_k
         return None, f"{type(e).__name__}: {str(e)[:120]}"
      
 
-# =========================================================
 # 4. AGENT
-# =========================================================
-
-def run_agent(message,use_llm=False, api_key=None):   # 新增: two new optional parameters)
+def run_agent(message,use_llm=False, api_key=None):   
     # Clear previous audit log
     st.session_state["audit_log"] = []
 
@@ -580,26 +559,21 @@ def run_agent(message,use_llm=False, api_key=None):   # 新增: two new optional
     findings = detect_tactics(redacted_message)
     write_audit_log("tool_call", {"tool": "detect_tactics", "found": len(findings)})
 
-    #新增："We will never ask for your password" mentions a password without requesting one
     if NO_SHARE_RX.search(message.lower()) and not has_unnegated_request(message):
         before = len(findings)
         findings = [f for f in findings if f["key"] != "sensitive"]
         if len(findings) < before:
             write_audit_log("note", {"sensitive_cue_ignored": "protective wording, no request found"})
             
-    #新增：An official sender domain is not "impersonation"; add sender findings
     if sender_official:
         findings = [f for f in findings if f["key"] != "authority"]
     findings = sender_findings + findings
 
-    # >>>新增: detect_urls now returns a list, and reads the ORIGINAL message
-    # >>> (redaction could damage links, e.g. https://official.com@evil.top looks like an email address)
     url_findings = detect_urls(message)
     if url_findings:
         findings.extend(url_findings)
         write_audit_log("tool_call", {"tool": "detect_urls", "found": [f["evidence"] for f in url_findings]})
 
-     #新增: optional AI reasoning (runs after all rule-based tools, before the final score)
     llm, llm_error = None, None
     if use_llm:
          rule_score, rule_level, _ = compute_risk(findings)
@@ -644,16 +618,14 @@ def run_agent(message,use_llm=False, api_key=None):   # 新增: two new optional
         "recommendation": recommendation,
         "redacted_message": redacted_message,
         "redactions": redactions,
-        "llm": llm,                #新增: new
-        "llm_error": llm_error     #新增: new
+        "llm": llm,
+        "llm_error": llm_error
     }
 
 
 
-# =========================================================
 # 5. UI  (light cybersecurity landing-page style)
-#    Only the look & layout changed. All detection logic above is untouched.
-# =========================================================
+# Only the look & layout changed. All detection logic above is untouched.
 import html as html_lib
 
 
@@ -853,7 +825,6 @@ st.markdown("""
 <div id="analyze"></div>
 """, unsafe_allow_html=True)
 
-#新增
 MODE_EMAIL = "✉️ Email"
 MODE_SMS = "📱 SMS"
 MODE_EML = "📎 Upload .eml"
@@ -876,7 +847,7 @@ PLACEHOLDERS = {
     ),
 }
 
-api_key = get_api_key()   #新增: new
+api_key = get_api_key()
 
 st.write("")
 with st.form("analyze_form", enter_to_submit=True):
@@ -886,7 +857,6 @@ with st.form("analyze_form", enter_to_submit=True):
         unsafe_allow_html=True
     )
 
-    #新增
     message = ""
     uploaded = None
 
@@ -904,7 +874,7 @@ with st.form("analyze_form", enter_to_submit=True):
             unsafe_allow_html=True
             )
 
-    #新增: AI reasoning switch (only usable when an API key is configured)
+    #AI reasoning switch (only usable when an API key is configured)
     use_llm = st.checkbox(
          "🤖 Add AI reasoning (sends the PII-redacted text and the sender domain to the LLM API)",
          value=False, disabled=not api_key
@@ -927,7 +897,6 @@ with st.form("analyze_form", enter_to_submit=True):
 
 if submitted:
 
-    #新增
     if uploaded is not None:
         msg = BytesParser(policy=policy.default).parsebytes(uploaded.getvalue())
         part = msg.get_body(preferencelist=("plain", "html"))
@@ -941,8 +910,8 @@ if submitted:
     if not message.strip():
         st.warning("Please enter a message or upload a file first.")
     else:
-        if mode == MODE_EMAIL and not extract_headers(message)[0]: #新增这一行
-            st.info("No From: line found, so the sender was not checked.")#新增这一行
+        if mode == MODE_EMAIL and not extract_headers(message)[0]:
+            st.info("No From: line found, so the sender was not checked.")
         st.session_state["last_result"] = run_agent(message)
         st.session_state["approvals"] = []
 
@@ -1111,4 +1080,3 @@ if result:
         "This prototype identifies potential scam indicators "
         "and does not guarantee that a message is malicious."
     )
-
