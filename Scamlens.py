@@ -234,7 +234,6 @@ def detect_tactics(message):
     findings = []
 
     for key, tactic in TACTICS_KB.items():
-        #matched = [p for p in tactic["examples"] if _rx(p).search(message_lower)]
         matched = distinct_matches(message_lower, tactic["examples"])
         if key == "urgency":
             for pat in URGENCY_PATTERNS:
@@ -420,26 +419,6 @@ def compute_risk(findings):
         icon = "🟢"
 
     return score, level, icon
-#ef compute_risk(findings):
-#    score = 0
-#   for f in findings:
-#       if f["severity"] == "High":
-#           score += 25
-#       elif f["severity"] == "Medium":
-#           score += 12
-#   score = min(score, 100)
-#
-#   if score >= 60:
-#       level = "HIGH RISK"
-#       icon = "🔴"
-#   elif score >= 30:
-#       level = "SUSPICIOUS"
-#       icon = "🟡"
-#   else:
-#       level = "LOW RISK"
-#       icon = "🟢"
-#
-#   return score, level, icon
 
 #compute_confidence now looks at the verdict (level / score / sender), so a clean message no longer shows "Confidence: Low"
 def compute_confidence(findings, level, score, sender_official=False):
