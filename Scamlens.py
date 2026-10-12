@@ -662,7 +662,7 @@ def esc(x):
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=JetBrains+Mono:wght@500;700&family=Nunito:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@700;800&family=Baloo+2:wght@600;700;800&family=JetBrains+Mono:wght@500;700&family=Nunito:wght@400;600;700&display=swap');
 
 [data-testid="InputInstructions"] {display: none;}
 
@@ -686,7 +686,7 @@ header[data-testid="stHeader"] {background: transparent;}
 .nav-brand {display: flex; align-items: center; gap: 10px;}
 .nav-logo {width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
            background: linear-gradient(135deg, #0ea5e9, #7c3aed); font-size: 17px;}
-.nav-name {font-family: 'Syne', sans-serif; font-weight: 800; font-size: 21px; color: #0f172a; letter-spacing: 0.01em;}
+.nav-name {font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 21px; color: #0f172a; letter-spacing: 0.01em;}
 .nav-name span {color: #0284c7;}
 .nav-links {display: flex; gap: 6px;}
 .nav-links a {color: #475569 !important; text-decoration: none !important; font-size: 13.5px; font-weight: 600; padding: 7px 14px; border-radius: 9px;}
@@ -701,7 +701,7 @@ header[data-testid="stHeader"] {background: transparent;}
 .tag {display: inline-flex; align-items: center; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700;
       color: #0369a1; border: 1px solid rgba(14,165,233,0.40); background: rgba(14,165,233,0.09); padding: 6px 14px; border-radius: 99px;}
 .tag i {width: 6px; height: 6px; border-radius: 50%; background: #0ea5e9; display: inline-block;}
-.h1 {font-family: 'Syne', sans-serif; font-weight: 800; font-size: 54px; line-height: 1.08; color: #0f172a; margin: 20px 0 18px;}
+.h1 {font-family: 'Manrope', sans-serif; font-weight: 800; font-size: 64px; line-height: 1.22; color: #0f172a; margin: 20px 0 18px; letter-spacing: -0.01em;}
 .g1 {color: #0284c7;}
 .g2 {color: #7c3aed;}
 .lead {font-size: 16.5px; line-height: 1.75; color: #475569; max-width: 520px;}
@@ -710,7 +710,7 @@ header[data-testid="stHeader"] {background: transparent;}
               padding: 14px 26px; border-radius: 12px; text-decoration: none !important; box-shadow: 0 8px 24px rgba(79,70,229,0.30);}
 .btn-ghost {color: #0f172a; font-weight: 700; font-size: 14px; padding: 14px 22px; border-radius: 12px; border: 1px solid #cbd5e1; background: #ffffff;}
 .stats {display: flex; gap: 34px; margin-top: 34px; flex-wrap: wrap;}
-.stats b {display: block; font-family: 'Syne', sans-serif; font-size: 30px; color: #0f172a; font-weight: 800;}
+.stats b {display: block; font-family: 'Baloo 2', sans-serif; font-size: 30px; color: #0f172a; font-weight: 800;}
 .stats b em {font-style: normal; color: #0ea5e9;}
 .stats span {font-size: 12px; color: #64748b;}
 
@@ -735,7 +735,7 @@ header[data-testid="stHeader"] {background: transparent;}
 
 /* ---------- section labels ---------- */
 .eyebrow {font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; color: #000000; margin: 4px 0 10px;}
-.sec {font-family: 'Syne', sans-serif; font-size: 1.35rem; font-weight: 800; color: #0f172a; margin: 34px 0 14px;}
+.sec {font-family: 'Baloo 2', sans-serif; font-size: 2rem; font-weight: 800; color: #0f172a; margin: 42px 0 18px; line-height: 1.35;}
 
 /* ---------- input type = 3 selectable cards ---------- */
 div[role="radiogroup"] {gap: 14px; width: 100%;}
@@ -785,7 +785,7 @@ div[role="radiogroup"] label, div[role="radiogroup"] label * {color: #000000 !im
 .res-score span {font-size: 22px; color: #94a3b8;}
 .res-pill {font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 700; color: var(--c); border: 1px solid var(--c);
            background: color-mix(in srgb, var(--c) 10%, transparent); padding: 9px 18px; border-radius: 99px;}
-.res-verdict {font-family: 'Syne', sans-serif; font-size: 30px; font-weight: 800; color: #0f172a; margin: 14px 0 16px;}
+.res-verdict {font-family: 'Manrope', sans-serif; font-size: 42px; font-weight: 800; color: #0f172a; margin: 16px 0 18px; line-height: 1.25;}
 .bar {height: 10px; background: rgba(15,23,42,0.08); border-radius: 99px; overflow: hidden;}
 .bar > div {height: 100%; background: var(--c); border-radius: 99px;}
 .res-conf {margin-top: 14px; font-size: 13.5px; color: #475569;}
