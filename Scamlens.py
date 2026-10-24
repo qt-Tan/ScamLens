@@ -3,13 +3,21 @@ import re
 import json
 import os
 import difflib
-from datetime import datetime,timezone
+from datetime import datetime, timezone
 from email import policy
 from email.parser import BytesParser
 from email.utils import parseaddr
 from urllib.parse import urlparse
+import sys
 
- #Page configuration
+# Optional local ML cue (folder scamlens_ml/). If it is missing, ScamLens runs on rules only.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from scamlens_ml.predict import predict_scam, to_finding as ml_to_finding
+except Exception:
+    predict_scam = ml_to_finding = None
+
+# Page configuration
 st.set_page_config(
     page_title="ScamLens",
     page_icon="🛡️",
@@ -21,7 +29,7 @@ OFFICIAL = {"maybank": ["maybank2u.com.my", "maybank.com", "maybank.com.my"],
             "cimb": ["cimb.com.my", "cimbclicks.com.my"],
             "lhdn": ["hasil.gov.my"],
             "dhl": ["dhl.com"],
-            "posmalaysia": ["pos.com.my", "posmalaysia.com.my"]} #上线前请对着官网核对
+            "posmalaysia": ["pos.com.my", "posmalaysia.com.my"]}
 
 BAD_TLDS = {"xyz", "top", "click", "icu", "vip", "buzz", "cfd", "sbs", "online", "site"}
 
@@ -43,7 +51,7 @@ def extract_headers(text):
         return m.group(1).strip() if m else ""
     return grab("from"), grab("reply-to")
 
-# analyze sender: returns (findings, is_official_domain)
+# Analyze sender: returns (findings, is_official_domain)
 def analyze_sender(from_header, reply_to=""):
     findings = []
     name, addr = parseaddr(from_header)
@@ -59,7 +67,7 @@ def analyze_sender(from_header, reply_to=""):
     if not official:
         reasons = [f"the display name claims to be '{b}', but the address uses {domain}" for b in claimed_brands(name)]
         reasons += [f"the domain {domain} uses the name '{b}' but is not an official domain" for b in claimed_brands(domain)]
-        if reasons:  
+        if reasons:
             add("; ".join(reasons).capitalize() + ".", "High")
         if domain.rsplit(".", 1)[-1] in BAD_TLDS:
             add(f"The sender domain ends in .{domain.rsplit('.', 1)[-1]}, often abused in scams.", "Medium")
@@ -73,49 +81,89 @@ TACTICS_KB = {
     "urgency": {
         "name": "🚨 Urgency",
         "definition": "Creates artificial time pressure to stop the user from verifying.",
-        "examples": ["urgent", "immediately", "right now", "act now", #删除了within,today,deadline
-                     "as soon as possible", "limited time"],
-        "severity": "High"
+        "examples": [
+            "urgent", "immediately", "right now", "act now",
+            "as soon as possible", "limited time", "limited spots",
+            "hurry", "today", "deadline",
+            "final warning", "last chance", "expires", "expiring",
+            "within 24 hours", "within 48 hours", "no time",
+        ],
+        "severity": "High",
     },
     "fear": {
-        "name": "😨 Fear / Threat",
-        "definition": "Uses fear of losing access, money or services to influence the user.",
-        "examples": ["suspended", "suspend", "blocked", "block", "locked", "lock",
-                     "terminated","penalty", "legal action", #删除了closed和fine
-                     "will be cancelled","will be closed"], #加了will be closed
-        "severity": "High"
+        "name": "😨 Fear / Threat / Emergency",
+        "definition": "Uses fear, urgency, or an emergency to influence the user.",
+        "examples": [
+            "suspended", "suspend", "blocked", "block", "locked", "lock",
+            "terminated", "penalty", "legal action", "lawsuit",
+            "will be cancelled", "will be closed",
+            "hospital", "emergency", "accident", "sick", "help me",
+            "surgery", "operation", "dying", "life support",
+            "arrested", "jail", "police case",
+        ],
+        "severity": "High",
     },
     "authority": {
         "name": "🏦 Authority / Impersonation",
         "definition": "References a trusted organisation to make the request appear legitimate.",
-        "examples": ["bank", "government", "police", "customs", "maybank",
-                     "cimb", "public bank", "dhl", "pos malaysia", "lhdn", "mypb"],
-        "severity": "Medium"
+        "examples": [
+            "bank", "government", "police", "customs",
+            "maybank", "cimb", "public bank", "rhb", "hong leong",
+            "bank islam", "ambank", "bsn",
+            "dhl", "pos malaysia", "lhdn", "mypb", "jpj", "pdrm",
+            "service", "customer", "cs", "uk",
+        ],
+        "severity": "Medium",
     },
     "reward": {
         "name": "🎁 Reward / Greed",
         "definition": "Offers a prize, refund or windfall to lure the user.",
-        "examples": ["you won", "winner", "prize", "reward", "cash",
-                     "refund", "lucky draw", "free gift"],
-        "severity": "Medium"
+        "examples": [
+            "you won", "winner", "prize", "reward", "cash",
+            "refund", "lucky draw", "free gift",
+            "guaranteed returns", "guaranteed profit",
+            "double your", "double back", "200%",
+            "investment", "roi", "crypto gains", "passive income",
+            "free", "claim", "won", "win", "guaranteed",
+            "draw", "awarded", "nokia", "tone", "150p",
+        ],
+        "severity": "Medium",
     },
     "sensitive": {
         "name": "🔐 Sensitive Information Request",
         "definition": "Requests or encourages disclosure of sensitive information.",
-        "examples": ["otp", "tac","password", "passcode", "verification code",
-                     "credit card", "card number", "bank account",
-                     "identity", "ic number", "passport","pin","cvv"], #加了tac,pin,cvv
-        "severity": "High"
+        "examples": [
+            "otp", "tac", "password", "passcode", "verification code",
+            "credit card", "card number", "bank account",
+            "identity", "ic number", "passport", "pin", "cvv",
+            "seed phrase", "private key", "recovery phrase",
+            "bitcoin", "btc", "ethereum", "eth", "usdt", "usdc", "bnb",
+            "crypto", "cryptocurrency", "wallet", "wallet address",
+            "gift card", "itunes card", "google play card",
+            "steam card", "apple card", "amazon card",
+            "western union", "moneygram",
+        ],
+        "severity": "High",
     },
     "action": {
         "name": "🖱️ Suspicious Action",
         "definition": "Pushes the user to take immediate action instead of verifying.",
-        "examples": ["click", "click here", "verify", "confirm", "transfer",
-                     "pay", "payment", "download", "install", "call us", "reply with"], #reply 变成reply with
-        "severity": "Medium"
-    }
+        "examples": [
+            "click", "click here", "verify", "confirm",
+            "transfer", "transfer money", "send money", "send funds",
+            "pay", "payment", "download", "install",
+            "call us", "reply with",
+            "send btc", "send crypto", "send eth", "send usdt",
+            "wallet address", "bitcoin address", "crypto wallet",
+            "buy gift card", "purchase gift card",
+            "wire transfer", "deposit",
+            "txt", "text", "reply", "send", "msg",
+            "mobile", "phone", "contact", "chat",
+            "www", "com", "http", "sms",
+        ],
+        "severity": "High",
+    },
 }
-
 GUIDANCE_KB = {
     "HIGH RISK": [
         "Do not click any links in this message.",
@@ -182,13 +230,11 @@ def redact_pii(text):
 
     return redacted, redactions
 
-
 # 3. TOOLS
 def _rx(term):
-    # whole-word match (allows simple endings: s / es / ed / d / ing);
-    # "_" counts as part of a word so tokens like [CODE_REDACTED] never match a keyword
+    # Whole-word match (allows simple endings: s / es / ed / d / ing);
+    # "_" counts as part of a word so tokens like [CODE_REDACTED] never match a keyword.
     return re.compile(r"(?<![a-z0-9_])" + re.escape(term) + r"(?:s|es|ed|d|ing)?(?![a-z0-9_])")
-
 
 URGENCY_PATTERNS = [r"within\s+\d+\s*(?:hours?|hrs?|days?)"]   # "within 24 hours" (not "within 5 minutes")
 
@@ -199,13 +245,12 @@ REQUEST_RX = re.compile(
     r"\s+(?:us\s+|me\s+)?(?:with\s+)?(?:your|ur|the)\b")
 NEGATION_TAIL_RX = re.compile(r"(?:do not|don't|dont|never|jangan|not)\s*(?:\w+\s+){0,2}$")
 
-
 def has_unnegated_request(text):
     """True if the text asks the reader to send/share/enter something (ignores 'do not share your ...')."""
     low = text.lower()
     for m in REQUEST_RX.finditer(low):
-         if not NEGATION_TAIL_RX.search(low[max(0, m.start() - 15):m.start()]):
-              return True
+        if not NEGATION_TAIL_RX.search(low[max(0, m.start() - 15):m.start()]):
+            return True
     return False
 
 def distinct_matches(message_lower, examples):
@@ -252,9 +297,7 @@ def detect_tactics(message):
 
     return findings
 
-
-       
-#link analysis. This whole section replaces the old detect_urls().
+# Link analysis
 SHORTENERS = {"bit.ly", "tinyurl.com", "t.co", "is.gd", "cutt.ly", "rb.gy", "shorturl.at",
               "s.id", "ow.ly", "goo.gl", "tiny.cc", "rebrand.ly"}
 URL_TLDS = sorted({"com", "net", "org", "my", "info", "biz", "ly", "cc", "ws"} | BAD_TLDS)
@@ -266,7 +309,6 @@ _URL_BARE_RX = re.compile(
     r")(?![a-z0-9-])(?:/[^\s<>\"'" + _CJK + r"]*)?", re.I)
 _EMAIL_IN_TEXT = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"
 _IP_RX = re.compile(r"\d{1,3}(?:\.\d{1,3}){3}")
-
 
 def extract_urls(text):
     """Find links, with or without http:// (email addresses are ignored)."""
@@ -281,7 +323,6 @@ def extract_urls(text):
             out.append(u)
     return out
 
-
 def split_url(u):
     try:
         has_scheme = bool(re.match(r"https?://", u, re.I))
@@ -291,7 +332,6 @@ def split_url(u):
     except ValueError:
         return None
 
-
 def decoy_domain(host):
     """An official domain hidden inside another domain, e.g. maybank2u.com.my.evil.xyz"""
     for ds in OFFICIAL.values():
@@ -299,7 +339,6 @@ def decoy_domain(host):
             if d in host and not (host == d or host.endswith("." + d)):
                 return d
     return None
-
 
 def lookalike_brands(host):
     """Misspelled brand domains such as rnaybank2u.com or maybnak.com"""
@@ -314,7 +353,6 @@ def lookalike_brands(host):
             hits.append(brand)
     return hits
 
-
 URL_FLAG_INFO = {
     "userinfo": ("🔗 Hidden destination in link", "High"),
     "ip": ("🔗 Link uses a raw IP address", "High"),
@@ -325,7 +363,6 @@ URL_FLAG_INFO = {
     "punycode": ("🔗 Lookalike characters in domain", "Medium"),
     "unverified": ("🔗 Unverified external link", "Medium"),
 }
-
 
 def detect_urls(message):
     """Returns a LIST of findings (one per kind of problem). Links to official domains are not flagged."""
@@ -384,28 +421,35 @@ def detect_urls(message):
     return findings
 
 def build_manipulation_chain(findings):
-    order = ["sender","authority", "fear", "urgency", "sensitive", "action", "reward", "url"]  #改：最前面加了 "sender"
+    """Order the detected tactics into a typical manipulation sequence."""
+    order = ["sender", "authority", "fear", "urgency", "sensitive", "action", "reward", "url"]
     present = {f["key"] for f in findings}
     chain = [k for k in order if k in present]
 
     name_map = {k: TACTICS_KB[k]["name"] for k in TACTICS_KB}
-    name_map["url"] = "🔗 Suspicious Link" #renamed from "External Link
-    name_map["sender"] = "👤 Suspicious Sender"   #新增
+    name_map["url"] = "🔗 Suspicious Link"
+    name_map["sender"] = "👤 Suspicious Sender"
     return [name_map.get(k, k) for k in chain]
 
 EXTRA_PER_MATCH = {"High": 25, "Medium": 12}   # bonus for each additional keyword in the same tactic
 MAX_EXTRA_MATCHES = 50                        # at most 50 bonus keywords per tactic
 
 def compute_risk(findings):
+    """Compute a 0-100 risk score from the severity of all findings."""
     score = 0
+    has_high_risk = False
+
     for f in findings:
         if f["severity"] == "High":
             score += 25
+            has_high_risk = True
         elif f["severity"] == "Medium":
             score += 12
-        if f["key"] in TACTICS_KB:           # only keyword-based tactics, not sender/url/llm_cue
-            extra = min(len(f["all_matches"]) - 1, MAX_EXTRA_MATCHES)
-            score += max(extra, 0) * EXTRA_PER_MATCH.get(f["severity"], 0)
+
+    # Guarantee a minimum score of 35 when any high-severity finding is present.
+    if has_high_risk and score < 35:
+        score = 35
+
     score = min(score, 100)
 
     if score >= 60:
@@ -420,26 +464,25 @@ def compute_risk(findings):
 
     return score, level, icon
 
-#compute_confidence now looks at the verdict (level / score / sender), so a clean message no longer shows "Confidence: Low"
 def compute_confidence(findings, level, score, sender_official=False):
+    """Estimate confidence in the verdict from finding severity and the sender's status."""
     high = sum(1 for f in findings if f["severity"] == "High")
     medium = sum(1 for f in findings if f["severity"] == "Medium")
 
     if level == "LOW RISK":
         if not findings:
-            # nothing found; stronger if the sender is a verified official domain
+            # Nothing found; stronger if the sender is a verified official domain.
             return "High" if sender_official else "Medium"
-        # some weak warning signs: less sure when the score is close to the SUSPICIOUS line (30)
+        # Some weak warning signs; less certain when the score is close to the SUSPICIOUS threshold (30).
         return "Medium" if score < 20 else "Low"
 
-    # SUSPICIOUS / HIGH RISK: same rule as before
+    # SUSPICIOUS / HIGH RISK
     if high >= 2:
         return "High"
     elif high == 1 or medium >= 2:
         return "Medium"
     else:
         return "Low"
-
 
 def build_counterfactual(findings):
     counterfactuals = []
@@ -468,7 +511,6 @@ def build_counterfactual(findings):
 
     return counterfactuals
 
-
 def write_audit_log(step, data):
     entry = {
         "timestamp": datetime.utcnow().isoformat(),
@@ -478,11 +520,11 @@ def write_audit_log(step, data):
     st.session_state.setdefault("audit_log", [])
     st.session_state["audit_log"].append(entry)
 
-# optional AI reasoning (LLM). Off by default; the rule-based result always works without it.
-# The LLM only EXPLAINS the evidence and may add up to 2 labelled "AI-detected cues"; it never decides the verdict alone.
+# Optional AI reasoning (LLM). Disabled by default; the rule-based result always works without it.
+# The LLM only explains the evidence and may add up to two labelled "AI-detected cues"; it never sets the verdict alone.
 # Only the PII-redacted text (with link query strings removed) and the sender domain are sent.
 # To use a different LLM provider, change call_llm() only.
-LLM_MODEL = os.environ.get("SCAMLENS_LLM_MODEL", "claude-haiku-4-5-20251001")
+LLM_MODEL = "gemini-3.8-flash"
 MAX_LLM_CUES = 2
 
 LLM_SYSTEM_PROMPT = """You are the reasoning step of ScamLens, a phishing and scam analysis agent.
@@ -500,24 +542,70 @@ Rules:
  "verdict_agreement": "agree" | "disagree" | "uncertain",
  "disagreement_reason": "string or null"}"""
 
-
 def get_api_key():
-    key = os.environ.get("ANTHROPIC_API_KEY")
-    if key:
-        return key
+    """Return configured API keys."""
+    # Read the key list from environment variables first.
+    keys = os.environ.get("GEMINI_API_KEYS")
+    if keys:
+        return keys
     try:
-        return st.secrets.get("ANTHROPIC_API_KEY")
+        # Read a key list from Streamlit secrets.
+        keys = st.secrets.get("GEMINI_API_KEYS")
+        if keys:
+            return keys
+        # Support the legacy single-key setting.
+        single_key = st.secrets.get("GEMINI_API_KEY")
+        if single_key:
+            return [single_key]
     except Exception:
-        return None
+        pass
+    return []
 
 
 def call_llm(system, user, api_key):
-    import anthropic   # imported here so the app still runs without the package
-    client = anthropic.Anthropic(api_key=api_key, timeout=20.0, max_retries=1)
-    resp = client.messages.create(model=LLM_MODEL, max_tokens=700, system=system,
-                                  messages=[{"role": "user", "content": user}])
-    return "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
+    """Call the LLM with key rotation and retry handling."""
+    import google.generativeai as genai
+    
+    # Normalize a single key to a list.
+    if isinstance(api_key, str):
+        keys = [api_key]
+    else:
+        keys = api_key
 
+    full_prompt = f"{system}\n\n{user}"
+    safety_settings = [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+    ]
+    
+    last_error = None
+    
+    # Try each configured key.
+    for i, current_key in enumerate(keys):
+        try:
+            genai.configure(api_key=current_key)
+            model = genai.GenerativeModel(LLM_MODEL)
+            response = model.generate_content(
+                full_prompt, 
+                safety_settings=safety_settings
+            )
+            # Return immediately after a successful call.
+            return response.text
+        except Exception as e:
+            error_str = str(e)
+            last_error = e
+            # Try the next key when the current key hits a quota or availability error.
+            if "429" in error_str or "ResourceExhausted" in error_str:
+                print(f"[System] Key {i+1} hit quota limit. Switching to next key...")
+                continue
+            else:
+                # Re-raise errors that are unlikely to be fixed by changing keys.
+                raise e
+                
+    # Raise the last error if all keys fail.
+    raise last_error
 
 def parse_llm_json(text):
     start, end = text.find("{"), text.rfind("}")
@@ -538,11 +626,9 @@ def parse_llm_json(text):
         "disagreement_reason": str(data["disagreement_reason"])[:300] if data.get("disagreement_reason") else None,
     }
 
-
 def strip_url_queries(text):
     """Remove ?query and #fragment parts of links (they can contain personal tokens) before sending text out."""
     return re.sub(r"(https?://[^\s?#]+)[?#]\S*", r"\1", text)
-
 
 def llm_reasoning(redacted_message, findings, score, level, sender_domain, api_key):
     """Returns (result or None, error text or None). Never raises."""
@@ -557,16 +643,15 @@ def llm_reasoning(redacted_message, findings, score, level, sender_domain, api_k
         return parse_llm_json(call_llm(LLM_SYSTEM_PROMPT, user, api_key)), None
     except Exception as e:   # no key, network, quota or parsing problems -> fall back to rules only
         return None, f"{type(e).__name__}: {str(e)[:120]}"
-     
 
 # 4. AGENT
-def run_agent(message,use_llm=False, api_key=None):   
+def run_agent(message, use_llm=False, api_key=None, use_ml=False):
     # Clear previous audit log
     st.session_state["audit_log"] = []
 
     write_audit_log("input_received", {"length": len(message)})
 
-    #新增：Sender analysis (uses the raw text, before redaction)
+    # Sender analysis runs on the raw text, before PII redaction.
     from_h, reply_h = extract_headers(message)
     sender_findings, sender_official = analyze_sender(from_h, reply_h)
     write_audit_log("tool_call", {"tool": "analyze_sender", "found": len(sender_findings)})
@@ -590,7 +675,7 @@ def run_agent(message,use_llm=False, api_key=None):
         findings = [f for f in findings if f["key"] != "sensitive"]
         if len(findings) < before:
             write_audit_log("note", {"sensitive_cue_ignored": "protective wording, no request found"})
-            
+
     if sender_official:
         findings = [f for f in findings if f["key"] != "authority"]
     findings = sender_findings + findings
@@ -600,28 +685,66 @@ def run_agent(message,use_llm=False, api_key=None):
         findings.extend(url_findings)
         write_audit_log("tool_call", {"tool": "detect_urls", "found": [f["evidence"] for f in url_findings]})
 
+    # Local ML classifier (runs on the PII-redacted text; nothing leaves the machine).
+    # Opt-in, and skipped when the sender is an official domain (the model knows wording, not senders).
+    ml = None
+    if use_ml and predict_scam and not sender_official:
+        ml = predict_scam(redacted_message)
+    write_audit_log("tool_call", {"tool": "ml_classifier", "ran": ml is not None,
+                                  "probability": ml["probability"] if ml else None})
+    ml_f = ml_to_finding(ml) if ml else None
+    if ml_f:
+        findings.append(ml_f)
+
     llm, llm_error = None, None
     if use_llm:
-         rule_score, rule_level, _ = compute_risk(findings)
-         sender_domain = parseaddr(from_h)[1].rsplit("@", 1)[-1].lower() if "@" in parseaddr(from_h)[1] else ""
-         llm, llm_error = llm_reasoning(redacted_message, findings, rule_score, rule_level, sender_domain, api_key)
-         write_audit_log("tool_call", {"tool": "llm_reasoning", "ok": llm is not None, "error": llm_error,
+        rule_score, rule_level, _ = compute_risk(findings)
+        sender_domain = parseaddr(from_h)[1].rsplit("@", 1)[-1].lower() if "@" in parseaddr(from_h)[1] else ""
+        llm, llm_error = llm_reasoning(redacted_message, findings, rule_score, rule_level, sender_domain, api_key)
+        write_audit_log("tool_call", {"tool": "llm_reasoning", "ok": llm is not None, "error": llm_error,
                                       "sent": "redacted text + sender domain only"})
-         if llm:
-              for cue in llm["additional_cues"][:MAX_LLM_CUES]:
-                   findings.append({
-                        "key": "llm_cue",
-                        "type": "🤖 AI-detected cue (unverified)",
-                        "evidence": cue["cue"],
-                        "all_matches": [cue["cue"]],
-                        "explanation": cue["why"],
-                        "severity": "Medium"      # +12 each, at most 2 cues, so the AI alone can never reach SUSPICIOUS (30)
-                        })
-    
+        if llm:
+            # LLM-detected cues are recorded as high-severity findings.
+            for cue in llm["additional_cues"][:MAX_LLM_CUES]:
+                findings.append({
+                    "key": "llm_cue",
+                    "type": "🤖 AI-detected cue",
+                    "evidence": cue["cue"],
+                    "all_matches": [cue["cue"]],
+                    "explanation": cue["why"],
+                    "severity": "High"
+                })
+
+    # 1. Baseline score from detected findings.
     score, level, icon = compute_risk(findings)
     write_audit_log("tool_call", {"tool": "compute_risk", "score": score, "level": level})
 
-    confidence = compute_confidence(findings, level, score, sender_official)   #新增: passes level, score and sender_official
+    # 2. ML-based escalation.
+    if ml:
+        prob = ml.get("probability", 0)
+
+        if prob >= 0.70:
+            score = max(score, 75)
+            level = "HIGH RISK"
+            icon = "🔴"
+            write_audit_log("escalation", {"reason": "ML probability at least 70%", "prob": prob})
+
+        elif prob >= 0.35:
+            score = max(score, 50)
+            if score < 60:
+                level = "SUSPICIOUS"
+                icon = "🟡"
+            write_audit_log("escalation", {"reason": "ML probability from 35% to below 70%", "prob": prob})
+
+    # 3. LLM override: escalate when the model disagrees or reports additional cues.
+    if llm and (llm.get("verdict_agreement") in ("disagree", "uncertain") or len(llm.get("additional_cues", [])) > 0):
+        if level != "HIGH RISK":
+            score = max(score, 85)
+            level = "HIGH RISK"
+            icon = "🔴"
+            write_audit_log("escalation", {"reason": "AI semantic reasoning"})
+
+    confidence = compute_confidence(findings, level, score, sender_official)
     write_audit_log("tool_call", {"tool": "compute_confidence", "confidence": confidence})
 
     chain = build_manipulation_chain(findings)
@@ -645,20 +768,16 @@ def run_agent(message,use_llm=False, api_key=None):
         "redacted_message": redacted_message,
         "redactions": redactions,
         "llm": llm,
-        "llm_error": llm_error
+        "llm_error": llm_error,
+        "ml": ml
     }
 
-
-
-# 5. UI  (light cybersecurity landing-page style)
-# Only the look & layout changed. All detection logic above is untouched.
+# 5. UI (light cybersecurity landing-page style)
 import html as html_lib
-
 
 def esc(x):
     """Escape text before putting it inside custom HTML (message content is untrusted)."""
     return html_lib.escape(" ".join(str(x).split()))
-
 
 st.markdown("""
 <style>
@@ -955,26 +1074,31 @@ with st.form("analyze_form", enter_to_submit=True):
             unsafe_allow_html=True
             )
 
-    #AI reasoning switch (only usable when an API key is configured)
+    # AI reasoning toggle (available only when an API key is configured).
     use_llm = st.checkbox(
-         "🤖 Add AI reasoning (sends the PII-redacted text and the sender domain to the LLM API)",
-         value=False, disabled=not api_key
+        "🤖 Add AI reasoning (sends the PII-redacted text and the sender domain to the LLM API)",
+        value=False, disabled=not api_key
     )
     if not api_key:
-         st.caption("AI reasoning is off: set ANTHROPIC_API_KEY (environment variable or .streamlit/secrets.toml) to enable it. "
-                    "Rule-based analysis works without it.")
+        st.caption("AI reasoning is off: set ANTHROPIC_API_KEY (environment variable or .streamlit/secrets.toml) to enable it. "
+                   "Rule-based analysis works without it.")
+
+    use_ml = st.checkbox(
+        "🧠 Add ML text model (runs locally, nothing is sent out; skipped for official senders)",
+        value=False, disabled=predict_scam is None
+    )
+    if predict_scam is None:
+        st.caption("ML model not available: keep the scamlens_ml folder next to this file.")
 
     submitted = st.form_submit_button(
         "🔎 Analyze Message",
         use_container_width=True
-        )
+    )
 
     st.caption(
         "🔒 Privacy: sender and link checks run locally. If AI reasoning is on, only the PII-redacted text "
-        "and the sender domain are sent to the LLM API. ScamLens does not store your message permanently."   #新增: wording updated
-        )
-
-
+        "and the sender domain are sent to the LLM API. ScamLens does not store your message permanently."
+    )
 
 if submitted:
 
@@ -993,9 +1117,10 @@ if submitted:
     else:
         if mode == MODE_EMAIL and not extract_headers(message)[0]:
             st.info("No From: line found, so the sender was not checked.")
-        st.session_state["last_result"] = run_agent(message)
+        # Wrap the analysis in a spinner to provide feedback while processing.
+        with st.spinner("🧠 AI Agent is analyzing the message..."):
+            st.session_state["last_result"] = run_agent(message, use_llm, api_key, use_ml)
         st.session_state["approvals"] = []
-
 
 result = st.session_state.get("last_result")
 
@@ -1039,7 +1164,24 @@ if result:
     else:
         st.success("No strong scam indicators were detected.")
 
-    #新增: AI reasoning
+    # ---------- ML model check ----------
+    ml = result.get("ml")
+    if ml:
+        st.markdown('<div class="sec">🧠 ML Model Check</div>', unsafe_allow_html=True)
+
+        # Show the raw model probability as a progress bar.
+        st.progress(min(max(ml["probability"], 0.0), 1.0),
+                    text=f"Scam-likeness of the wording: {ml['probability']:.0%}")
+
+        # Explain any divergence between the ML score and the rule-based verdict.
+        if ml["probability"] < 0.5 and result["risk_level"] in ["SUSPICIOUS", "HIGH RISK"]:
+            st.info("💡 **Why the difference?** The ML model is trained on both historical SMS spam and modern smishing datasets. If it still misses a highly paraphrased scam, it is because ML models rely on specific learned word patterns. However, our Rule Engine successfully caught the structural scam patterns above.")
+        elif ml["probability"] >= 0.5:
+            st.success("✅ The ML model agrees with the Rule Engine. The wording strongly resembles known scam or smishing messages.")
+        else:
+            st.caption("Small local model trained on combined historical and modern SMS datasets. It acts as a supportive signal.")
+
+    # ---------- AI reasoning ----------
     llm = result.get("llm")
     if llm:
         st.markdown('<div class="sec">🤖 AI Reasoning</div>', unsafe_allow_html=True)
@@ -1154,6 +1296,7 @@ if result:
     with st.expander("⚠️ Limitations"):
         st.write("- This prototype uses rule-based detection and may produce false positives.")
         st.write("- Ambiguous messages may be misclassified.")
+        st.write("- The ML cue comes from a small model trained mostly on synthetic example messages. It is a supporting signal, not proof.")
         st.write("- Sender and link checks are heuristic: there is no live URL-reputation or domain-age lookup, and the official-domain list covers only a few Malaysian brands.")
         st.write("- Do not rely on this tool as the only defence against scams.")
 
